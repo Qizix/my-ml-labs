@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hand Detection</title>
+</head>
+<body>
+  <h1>Hand Detection with Mediapipe</h1>
+  <video id="video" width="640" height="480" autoplay></video>
+  <canvas id="canvas" width="640" height="480" style="border:1px solid black;"></canvas>
+  <pre id="landmarks"></pre>
+
+  <script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const landmarksPre = document.getElementById('landmarks');
+
+  navigator.mediaDevices.getUserMedia({video: true})
+    .then(stream => { video.srcObject = stream; })
+    .catch(err => { console.error("Error accessing camera:", err); });
+
+  // Пара з'єднань для MediaPipe Hands (пальці + долоня)
+const connections = [
+  [0,1], [1,2], [2,3], [3,4],      // великий палець
+  [0,5], [5,6], [6,7], [7,8],      // вказівний
+  [0,9], [9,10], [10,11], [11,12], // середній
+  [0,13], [13,14], [14,15], [15,16], // безіменний
+  [0,17], [17,18], [18,19], [19,20]  // мізинець
+];
+
+function drawHand(ctx, landmarks, width, height) {
+  ctx.clearRect(0, 0, width, height);
+
+  // Малюємо відео (фонове зображення)
+  ctx.drawImage(video, 0, 0, width, height);
+
+  // Малюємо лінії (кістки)
+  ctx.strokeStyle = 'lime';
+  ctx.lineWidth = 4;
+  connections.forEach(([startIdx, endIdx]) => {
+    const start = landmarks[startIdx];
+    const end = landmarks[endIdx];
+    if (start && end) {
+      ctx.beginPath();
+      ctx.moveTo(start.x * width, start.y * height);
+      ctx.lineTo(end.x * width, end.y * height);
+      ctx.stroke();
+    }
+  });
+
+  // Малюємо точки (суглоби)
+  ctx.fillStyle = 'red';
+  landmarks.forEach(lm => {
+    ctx.beginPath();
+    ctx.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+}
+
+video.addEventListener('play', () => {
+  const sendFrame = () => {
+    let width = canvas.width;
+    let height = canvas.height;
+
+    let dataURL = null;
+    ctx.drawImage(video, 0, 0, width, height);
+    dataURL = canvas.toDataURL('image/jpeg');
+
+    fetch('/detect_hand', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({image: dataURL})
+    })
+    .then(response => response.json())
+    .then(data => {
+      const landmarks = data.landmarks;
+      if (landmarks.length > 0) {
+        drawHand(ctx, landmarks, width, height);
+      } else {
+        // Якщо рука не знайдена — просто відео
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(video, 0, 0, width, height);
+      }
+    })
+    .catch(console.error);
+
+    setTimeout(sendFrame, 200);
+  };
+
+  sendFrame();
+});
+
+</script>
+
+</body>
+</html>
